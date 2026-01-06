@@ -1,0 +1,5 @@
+{
+  "name": "Copy of InspectorAI",
+  "description": "An intelligent chat interface for equipment inspection databases. Query history, find similar defects, and access inspection reports directly through natural language.",
+  "requestFramePermissions": []
+}
