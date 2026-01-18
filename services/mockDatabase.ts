@@ -18,7 +18,6 @@ const LOCATIONS = [
 const INSPECTORS = ['J. Smith', 'A. Doe', 'R. Roe', 'S. Connor', 'B. Wayne', 'C. Kent', 'D. Prince', 'L. Lane', 'P. Parker', 'T. Stark'];
 
 // Specific definitions for the requested equipment types
-// Counts increased to 50 as requested, and Heat Exchangers added.
 const CATEGORY_CONFIGS = [
   { type: 'Pipeline', code: 'PL', count: 50, prefix: 'Pipeline' },
   { type: 'PSV', code: 'PSV', count: 50, prefix: 'PSV' },
@@ -28,7 +27,6 @@ const CATEGORY_CONFIGS = [
 ];
 
 // Scenarios mapping to the requested 3 types of equipment states
-// expanded with more specific findings for PSVs, Piping, and Heat Exchangers
 const SCENARIOS = [
   {
     label: 'Accepted', // Status: Accepted/Good
@@ -130,40 +128,41 @@ const generateMockData = (): Equipment[] => {
   CATEGORY_CONFIGS.forEach(config => {
     for (let i = 1; i <= config.count; i++) {
       // 1. Determine Scenario (Accepted, Repaired, Pending)
-      // We rotate through them to ensure an even distribution as requested
       const scenarioIndex = (i - 1) % 3; 
       const scenario = SCENARIOS[scenarioIndex];
 
       // 2. Generate Basic Info
-      // Pad number with leading zeros, e.g., 001, 002... 050
       const numStr = i.toString().padStart(3, '0'); 
       const equipmentId = `EQ-${config.code}-${numStr}`;
       const equipmentName = `${config.prefix}-${numStr}`;
       
       // 3. Generate Inspection History (3 to 15 reports)
-      const numInspections = Math.floor(Math.random() * 13) + 3; // Random between 3 and 15
+      const numInspections = Math.floor(Math.random() * 13) + 3; 
       const inspections: Inspection[] = [];
 
       for (let j = 0; j < numInspections; j++) {
         const isLatest = j === 0;
-        
-        // Latest inspection matches the Equipment's current "State"
-        // Older inspections are random, mostly closed/accepted/repaired
         const currentScenario = isLatest ? scenario : SCENARIOS[Math.floor(Math.random() * 2)]; 
         
         const status = isLatest 
           ? currentScenario.statusPool[Math.floor(Math.random() * currentScenario.statusPool.length)]
           : 'Closed';
 
-        // Dates: spread out over years
         const date = new Date();
-        date.setMonth(date.getMonth() - (j * 4)); // Every 4 months roughly
+        date.setMonth(date.getMonth() - (j * 4));
         date.setDate(date.getDate() - Math.floor(Math.random() * 30));
 
         const finding = currentScenario.findingsPool[Math.floor(Math.random() * currentScenario.findingsPool.length)];
         const recommendation = currentScenario.recPool[Math.floor(Math.random() * currentScenario.recPool.length)];
         const severity = currentScenario.severityPool[Math.floor(Math.random() * currentScenario.severityPool.length)];
         const inspector = INSPECTORS[Math.floor(Math.random() * INSPECTORS.length)];
+
+        // Generate PSV specific failure types
+        let failureType: 'Critical' | 'Normal' | undefined = undefined;
+        if (config.type === 'PSV') {
+          // Randomly assign failure type for PSVs
+          failureType = Math.random() > 0.5 ? 'Critical' : 'Normal';
+        }
 
         inspections.push({
           id: `INS-${equipmentId}-${date.getFullYear()}${date.getMonth()}${date.getDate()}`,
@@ -173,8 +172,31 @@ const generateMockData = (): Equipment[] => {
           recommendations: recommendation,
           severity: severity as any,
           reportUrl: `https://drive.google.com/open?id=report-${equipmentId}-${j}`,
-          status: status as any
+          status: status as any,
+          failureType: failureType
         });
+      }
+
+      // 4. Generate PSV Datasheet Specs
+      let specs: Record<string, string | number> | undefined;
+      if (config.type === 'PSV') {
+         specs = {
+            "Tag No": equipmentName,
+            "Manufacturer": ["Crosby", "Farris", "Leser", "Consolidated", "Anderson Greenwood"][Math.floor(Math.random() * 5)],
+            "Model Number": `JOS-E-${Math.floor(Math.random() * 100)}`,
+            "Service": ["Liquid", "Gas", "Steam", "Two-Phase"][Math.floor(Math.random() * 4)],
+            "Set Pressure": `${Math.floor(Math.random() * 500) + 50} PSIG`,
+            "Back Pressure": `${Math.floor(Math.random() * 20)} PSIG`,
+            "Operating Temperature": `${Math.floor(Math.random() * 400) + 100} °F`,
+            "Orifice Designation": ["D", "E", "F", "G", "H", "J", "K", "L"][Math.floor(Math.random() * 8)],
+            "Orifice Area": `${(Math.random() * 2 + 0.1).toFixed(3)} sq.in`,
+            "Body Material": ["SA-216 WCB", "SA-351 CF8M", "Carbon Steel"][Math.floor(Math.random() * 3)],
+            "Trim Material": "316 SS",
+            "Inlet Size": ["1", "1.5", "2", "3", "4"][Math.floor(Math.random() * 5)] + " inch",
+            "Outlet Size": ["2", "3", "4", "6", "8"][Math.floor(Math.random() * 5)] + " inch",
+            "Flange Rating": "150# x 150#",
+            "Code Stamp": "ASME UV"
+         };
       }
 
       data.push({
@@ -182,15 +204,56 @@ const generateMockData = (): Equipment[] => {
         name: equipmentName,
         type: config.type,
         location: LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)],
-        inspections: inspections
+        inspections: inspections,
+        specs: specs
       });
     }
   });
+
+  // --- POST-PROCESSING: Inject ASME R-Stamp Repairs ---
+  // Requirement: Exchangers (up to 10) and Drums (up to 10) randomly had ASME R stamp repair
+  // with shell or nozzle replacement.
+
+  const injectRStamp = (type: string, maxCount: number) => {
+    // Filter matching equipment
+    const matchingIndices = data
+      .map((eq, idx) => ({ eq, idx }))
+      .filter(item => item.eq.type === type)
+      .map(item => item.idx);
+    
+    // Shuffle indices
+    const shuffled = matchingIndices.sort(() => 0.5 - Math.random());
+    
+    // Select random count between 1 and maxCount
+    const targetCount = Math.floor(Math.random() * maxCount) + 1;
+    const selectedIndices = shuffled.slice(0, targetCount);
+
+    selectedIndices.forEach(idx => {
+      const eq = data[idx];
+      if (eq.inspections.length > 0) {
+        // Update the latest inspection to reflect R-Stamp repair
+        const latest = eq.inspections[0];
+        
+        // Randomly decide between Shell or Nozzle
+        const isShell = Math.random() > 0.5;
+        const component = isShell ? "Shell section" : "Inlet nozzle";
+        const reason = isShell ? "localized wall thinning below Tmin" : "cracking at weld neck";
+
+        latest.findings = `ASME "R" Stamp Repair performed. ${component} replaced due to ${reason}. Full NDT and Hydrotest completed successfully.`;
+        latest.recommendations = "Record R-1 form in asset history. Baseline thickness readings taken for new component.";
+        latest.status = "Closed"; // Repair is done
+        latest.severity = "High"; // Major repair implies high severity event occurred
+      }
+    });
+  };
+
+  injectRStamp('Heat Exchanger', 10);
+  injectRStamp('Drum', 10);
   
   return data;
 };
 
-// Generate records (50 Pipelines + 50 PSVs + 50 PVs + 50 Drums + 50 Exchangers = 250 items)
+// Generate records
 const INSPECTION_DB: Equipment[] = generateMockData();
 
 // --- Database Access Functions ---
@@ -213,7 +276,8 @@ export const searchInspections = (query: string): SearchResult[] => {
         ins.findings.toLowerCase().includes(lowerQuery) ||
         ins.recommendations.toLowerCase().includes(lowerQuery) ||
         ins.severity.toLowerCase().includes(lowerQuery) ||
-        eq.name.toLowerCase().includes(lowerQuery)
+        eq.name.toLowerCase().includes(lowerQuery) ||
+        (ins.failureType && ins.failureType.toLowerCase().includes(lowerQuery))
       ) {
         results.push({
           equipmentName: eq.name,
@@ -261,6 +325,7 @@ CREATE TABLE inspections (
     severity VARCHAR(20),
     report_url VARCHAR(255),
     status VARCHAR(20),
+    failure_type VARCHAR(20),
     CONSTRAINT fk_equipment
         FOREIGN KEY (equipment_id) 
         REFERENCES equipment(id)
@@ -282,7 +347,8 @@ CREATE INDEX idx_equipment_name ON equipment(name);
 
   INSPECTION_DB.forEach(eq => {
     eq.inspections.forEach(ins => {
-      sql += `INSERT INTO inspections (id, equipment_id, date, inspector, findings, recommendations, severity, report_url, status) VALUES ('${escapeSql(ins.id)}', '${escapeSql(eq.id)}', '${ins.date}', '${escapeSql(ins.inspector)}', '${escapeSql(ins.findings)}', '${escapeSql(ins.recommendations)}', '${ins.severity}', '${escapeSql(ins.reportUrl)}', '${ins.status}');\n`;
+      const failTypeVal = ins.failureType ? `'${ins.failureType}'` : 'NULL';
+      sql += `INSERT INTO inspections (id, equipment_id, date, inspector, findings, recommendations, severity, report_url, status, failure_type) VALUES ('${escapeSql(ins.id)}', '${escapeSql(eq.id)}', '${ins.date}', '${escapeSql(ins.inspector)}', '${escapeSql(ins.findings)}', '${escapeSql(ins.recommendations)}', '${ins.severity}', '${escapeSql(ins.reportUrl)}', '${ins.status}', ${failTypeVal});\n`;
     });
   });
 

@@ -49,6 +49,67 @@ export const generatePDFReport = (items: {id: string, name: string, type: string
     yPos += 10;
   };
 
+  const renderSpecs = (specs: Record<string, string | number>) => {
+    doc.addPage();
+    let dY = 20;
+    
+    // Header
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("Equipment Datasheet", pageWidth / 2, dY, { align: "center" });
+    dY += 15;
+
+    // Table Header Background
+    doc.setFillColor(230, 230, 230);
+    doc.rect(margin, dY, contentWidth, 10, 'F');
+    
+    doc.setLineWidth(0.1);
+    doc.setDrawColor(100, 100, 100);
+    
+    // Header Text
+    doc.setFontSize(11);
+    doc.text("Parameter", margin + 5, dY + 6.5);
+    doc.text("Specification", margin + (contentWidth / 2) + 5, dY + 6.5);
+    
+    // Box
+    doc.rect(margin, dY, contentWidth, 10);
+    
+    dY += 10;
+
+    // Rows
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    
+    Object.entries(specs).forEach(([key, value], idx) => {
+        const rowHeight = 8;
+        
+        // Background for alternate rows
+        if (idx % 2 === 1) {
+            doc.setFillColor(248, 248, 248);
+            doc.rect(margin, dY, contentWidth, rowHeight, 'F');
+        }
+
+        // Text
+        doc.text(key, margin + 5, dY + 5.5);
+        doc.text(String(value), margin + (contentWidth / 2) + 5, dY + 5.5);
+        
+        // Vertical Divider
+        doc.line(margin + (contentWidth/2), dY, margin + (contentWidth/2), dY + rowHeight);
+        
+        // Box
+        doc.rect(margin, dY, contentWidth, rowHeight);
+
+        dY += rowHeight;
+    });
+    
+    // Footer note
+    dY += 10;
+    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+    doc.text("Datasheet generated automatically by InspectorAI.", margin, dY);
+  };
+
   // --- PDF Content ---
 
   // Title Page
@@ -125,10 +186,22 @@ export const generatePDFReport = (items: {id: string, name: string, type: string
 
       yPos += 5;
       addLine();
+
+      // --- PSV Datasheet Attachment ---
+      if (fullEq.specs) {
+        renderSpecs(fullEq.specs);
+        // If there are more items, start a fresh page for the next item's report info
+        if (index < selected.length - 1 || items.length > 1) {
+           doc.addPage();
+           yPos = margin;
+        }
+      }
     });
 
-    // If batch, add page between types
-    if (items.length > 1) {
+    // If batch and not PSV (handled above), add page between types
+    // Since PSV loop adds pages internally for datasheets, we need to be careful not to add double pages.
+    // If we just finished a PSV block, yPos might be at margin (due to addPage at end of loop).
+    if (items.length > 1 && type !== 'PSV') {
         doc.addPage();
         yPos = margin;
     }

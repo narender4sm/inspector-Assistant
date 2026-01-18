@@ -21,6 +21,7 @@ export interface Inspection {
   severity: 'Low' | 'Medium' | 'High' | 'Critical';
   reportUrl: string;
   status: 'Open' | 'Closed' | 'In Progress';
+  failureType?: 'Critical' | 'Normal';
 }
 
 export interface Equipment {
@@ -29,6 +30,7 @@ export interface Equipment {
   type: string;
   location: string;
   inspections: Inspection[];
+  specs?: Record<string, string | number>;
 }
 
 export interface SearchResult {
